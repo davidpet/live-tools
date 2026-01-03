@@ -733,7 +733,7 @@ class GridTileApp {
 
     // Colors for preview (not exported):
     const bg = "#ffffff";
-    const tile = "rgba(0,0,0,0.12)";
+    const tile = "rgba(0,0,0,1)";
     const line = "rgba(255,255,255,1)";
 
     ctx.fillStyle = bg;
