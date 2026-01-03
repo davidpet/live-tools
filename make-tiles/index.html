@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Grid Tile Template Helper (Premiere Pro)</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="header">
+      <h1>Grid Tile Template Helper — Premiere Pro</h1>
+    </header>
+
+    <div class="grid">
+      <!-- Inputs -->
+      <section class="card">
+        <div class="hd">
+          <h2>Inputs</h2>
+          <button class="btn small" id="btnReset" type="button">Reset defaults</button>
+        </div>
+
+        <div class="bd">
+          <div class="form">
+            <div class="row">
+              <label>
+                Rows (M)
+                <input id="rows" type="number" min="1" step="1" value="2" />
+              </label>
+              <label>
+                Columns (N)
+                <input id="cols" type="number" min="1" step="1" value="3" />
+              </label>
+            </div>
+
+            <div class="row">
+              <label>
+                Sequence width (px)
+                <input id="seqW" type="number" min="1" step="1" value="1920" />
+              </label>
+              <label>
+                Sequence height (px)
+                <input id="seqH" type="number" min="1" step="1" value="1080" />
+              </label>
+            </div>
+
+            <div class="toggle">
+              <input id="guarantee" type="checkbox" checked />
+              <div class="ttext">
+                <div class="top">Guarantee coverage (no seams)</div>
+                <div class="sub">
+                  Crop values are floored and base Transform scale is ceiled (within Premiere’s 7-character entry limit),
+                  so rounding won’t create gaps.
+                </div>
+              </div>
+            </div>
+
+            <div class="sectionBox">
+              <div class="sectionBoxHeader">
+                <div class="sectionBoxTitle">Matte PNG export (optional)</div>
+                <div class="sectionBoxHint">
+                  Generates a Track Matte PNG that creates transparent “gaps” for borders (lines).
+                  The gaps reveal whatever is underneath (e.g., a Color Matte).
+                </div>
+              </div>
+
+              <div class="sectionBoxBody">
+                <div class="row">
+                  <label>
+                    Matte mode
+                    <select id="matteMode">
+                      <option value="alpha">Alpha (transparent bg)</option>
+                      <option value="luma">Luma (black bg, white cells)</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Border thickness (px)
+                    <input id="gapPx" type="number" min="0" step="1" value="8" />
+                  </label>
+                </div>
+
+                <div class="rangeRow">
+                  <input id="gapRange" type="range" min="0" max="80" step="1" value="8" />
+                  <div class="rangeHint">Use the slider for quick tuning; number box for exact px.</div>
+                </div>
+
+                <div class="toggle compact">
+                  <input id="outerBorder" type="checkbox" />
+                  <div class="ttext">
+                    <div class="top">Outer border</div>
+                    <div class="sub">Outer border is full thickness (not half).</div>
+                  </div>
+                </div>
+
+                <div class="vizWrap">
+                  <div class="vizTitle">Border thickness preview</div>
+                  <canvas id="matteViz" class="vizCanvas" width="360" height="203"></canvas>
+                  <div class="mini">
+                    Preview is scaled to your sequence aspect ratio; thickness is proportional to px thickness.
+                  </div>
+                </div>
+
+                <div class="btnRow">
+                  <button class="btn" id="btnMatteLines" type="button">Download Lines Matte PNG</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mini">
+              Note: Premiere numeric fields often behave like a <strong>7-character</strong> limit (where <code>.</code> counts).
+              For values &lt; 1, the formatter may omit the leading zero (e.g. <code>.123456</code>) to keep precision.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Outputs -->
+      <section class="card">
+        <div class="hd">
+          <h2>Outputs</h2>
+          <div class="copyRow">
+            <button class="btn small" id="btnCopyTile" type="button">Copy selected tile</button>
+            <button class="btn small" id="btnCopyAll" type="button">Copy all tiles</button>
+          </div>
+        </div>
+
+        <div class="bd">
+          <div class="infoGrid">
+            <div class="mutedLine"><span>Sequence</span><span id="outSeq">—</span></div>
+            <div class="mutedLine"><span>Grid</span><span id="outGrid">—</span></div>
+            <div class="mutedLine"><span>Selected tile</span><span id="outSel">—</span></div>
+            <div class="mutedLine"><span>Cell size (px)</span><span id="outCell">—</span></div>
+            <div class="mutedLine"><span>Base Transform Scale</span><span id="outBaseScale">—</span></div>
+            <div class="mutedLine"><span>Meaning</span><span id="outMeaning">—</span></div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="tilePickerWrap">
+            <div class="tilePickerHeader">
+              <div class="tilePickerTitle">Tile picker</div>
+              <div class="tilePickerHint">Click a tile to view/copy its values.</div>
+            </div>
+            <div id="tilePicker" class="tilePicker"></div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="outputs" id="tileOutputs"></div>
+
+          <div class="divider"></div>
+
+          <div class="help">
+            <h3>How to build a reusable tiled-image template in Premiere Pro (matches your “Fill-to-cell” spec)</h3>
+            <ol>
+              <li>Create a sequence at the size you entered above (e.g., 1920×1080).</li>
+
+              <li>Create enough video tracks for your tiles (M×N). Place one image per track, same duration.</li>
+
+              <li>
+                For each tile clip, do this effect stack:
+                <ul>
+                  <li><code>Distort → Transform</code> (this is the “Fill-to-cell baseline” scale, and also the one you’ll tweak later to reframe)</li>
+                  <li><code>Transform → Crop</code> (makes the tile window size)</li>
+                  <li>Note that <code>Transform</code> and <code>Crop</code> are currently the same for all the tiles, so you can copy/paste those effects and just tweak the next one individually.</li>
+                  <li>Use built-in <code>Motion → Position</code> to place the tile in the grid</li>
+                </ul>
+              </li>
+
+              <li>
+                Enter values from this tool:
+                <ul>
+                  <li><strong>Transform Scale</strong>: set in <code>Distort → Transform → Scale</code></li>
+                  <li><strong>Crop Left/Right/Top/Bottom</strong>: set in <code>Crop</code></li>
+                  <li><strong>Motion Position X/Y</strong>: set in <code>Motion → Position</code></li>
+                </ul>
+              </li>
+
+              <li>
+                Reframing later (without changing the on-screen tile size):
+                <ul>
+                  <li>Adjust the SAME <code>Distort → Transform</code> effect’s <strong>Position</strong> and <strong>Scale</strong>.</li>
+                  <li>Because Crop + Motion placement stay fixed, the tile stays the same size/location while the image moves underneath.</li>
+                </ul>
+              </li>
+
+              <li>
+                Quality tip (avoid double-scaling):
+                <ul>
+                  <li>Try to keep <code>Motion → Scale</code> at 100% and do your scaling in <code>Distort → Transform</code>.</li>
+                  <li>If you already used “Fill” which changed Motion scale, consider multiplying scales and consolidating into the scale you’re actually using.</li>
+                  <li>Use the Ken Burns Effect tool to get the more precise Fill scale of an image for multiplying with the grid scale.</li>
+                </ul>
+              </li>
+
+              <li>
+                Optional: Add toggleable grid lines (borders) using the exported Lines Matte PNG + a Color Matte:
+                <ul>
+                  <li>Create a <strong>Color Matte</strong> for your line color and place it <strong>under</strong> the tiled grid.</li>
+                  <li>Nest your whole tiled grid (so it becomes one clip on V2).</li>
+                  <li>Put the Color Matte on V1 (below the nest), same duration.</li>
+                  <li>Put the exported <strong>Lines Matte PNG</strong> on V3 (above the nest), same duration.</li>
+                  <li>Apply <code>Keying → Track Matte Key</code> to the V2 nest and choose V3 as the matte.</li>
+                  <li>If you exported <strong>Alpha</strong>: use <strong>Matte Alpha</strong>. If <strong>Luma</strong>: use <strong>Matte Luma</strong>.</li>
+                  <li><strong>Toggle lines OFF</strong>: disable the Track Matte Key effect on V2 (fx toggle). Toggle ON: enable it.</li>
+                </ul>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast">Copied</div>
+  </div>
+
+  <script type="module" src="./dist/index.js"></script>
+</body>
+</html>

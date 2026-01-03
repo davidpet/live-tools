@@ -1,0 +1,26 @@
+{
+  "name": "make-tiles",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "config": {
+    "deployFolder": "../docs/make-tiles"
+  },
+  "scripts": {
+    "clean": "rm -rf ./dist/*",
+    "prebuild": "npm run clean && tsc",
+    "build": "bestzip package.zip ./dist index.html styles.css",
+    "prestart": "tsc",
+    "start": "http-server . -o",
+    "deploy": "shx rm -rf $npm_package_config_deployFolder/* && shx cp -r dist  $npm_package_config_deployFolder/dist && shx cp index.html  $npm_package_config_deployFolder/&& shx cp styles.css  $npm_package_config_deployFolder/"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "bestzip": "^2.2.1",
+    "http-server": "^14.1.1",
+    "shx": "^0.3.4",
+    "typescript": "^5.3.3"
+  }
+}
