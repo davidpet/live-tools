@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>3D LUT Tile Pattern Tool</title>
+    <link rel="stylesheet" href="styles.css" />
+    <!--
+      Note: Step 2 uses dynamic JS execution (new Function), so if you use a CSP,
+      you must allow 'unsafe-eval'. This page includes a CSP that also blocks network
+      exfiltration (connect-src 'none') for typical hosted scenarios.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        img-src 'self' data: blob:;
+        style-src 'self';
+        script-src 'self' 'unsafe-eval';
+        connect-src 'none';
+        base-uri 'none';
+        form-action 'none';
+        frame-ancestors 'none';
+      "
+    />
+  </head>
+  <body>
+    <header class="page-header">
+      <div class="container">
+        <h1>3D LUT Tile Pattern Tool</h1>
+        <p class="lede">
+          Generate an identity tile pattern (Step 1), optionally apply arbitrary per-pixel JS (Step 2),
+          then reconstruct a standard <code>.cube</code> 3D LUT from a processed image (Step 3).
+          Each step is independent — run them in any order.
+        </p>
+      </div>
+    </header>
+
+    <main class="container page-grid">
+      <!-- Step 1 -->
+      <section class="card" aria-labelledby="step1Title">
+        <div class="card-header">
+          <h2 id="step1Title">Step 1 — Generate identity test pattern (PNG)</h2>
+          <p class="muted">
+            Creates a lossless PNG of <code>N³</code> solid-color tiles (each tile is <code>M×M</code> pixels),
+            ordered deterministically across the RGB cube.
+          </p>
+        </div>
+
+        <details class="instructions" open>
+          <summary>Instructions & warnings</summary>
+          <div class="instructions-body">
+            <p><strong>What to do:</strong></p>
+            <ol>
+              <li>Pick <strong>N</strong> (samples per dimension) and <strong>M</strong> (pixels per tile edge).</li>
+              <li>Choose a layout: <strong>Tall</strong> (default) or <strong>Wide</strong>.</li>
+              <li>Click <strong>Generate PNG</strong> and save it.</li>
+              <li>Open the PNG in your editor (Photoshop, etc.), apply your look, then export back to PNG at the <strong>exact same pixel dimensions</strong>.</li>
+            </ol>
+            <p><strong>Tips for Photoshop:</strong></p>
+            <ol>
+              <li>"Assign" the profile that this lut will be meant for in Photoshop to lock in the source interpretation of the linearly scaled matrix</li>
+              <li>Convert to 16-bit to avoid losing data in the conversions</li>
+              <li>"Convert" to the profile that will serve as the intermediary, affecting the look of the conversions</li>
+              <li>Perform whatever filters you want in the intermediary color space</li>
+              <li>"Convert" back to the profile the LUT is meant for and switch image mode to 8-bit</li>
+              <li>Save in lossless PNG again</li>
+            </ol>
+            <p><strong>Warnings / best practices:</strong></p>
+            <ul>
+              <li><strong>Do not resize/crop/pad</strong> the image (Step 3 relies on exact dimensions).</li>
+              <li>Keep it <strong>lossless</strong>: use PNG (avoid JPEG).</li>
+              <li><strong>Blur/sharpen/noise</strong> can cause tile-edge bleed; Step 3 samples the tile center to reduce this, but heavy effects can still distort.</li>
+              <li><strong>Color management matters:</strong> profile conversions/gamma changes will be baked into the LUT — do it intentionally.</li>
+              <li>Avoid spatial transforms (warp/perspective/content-aware) unless you intentionally want non-LUT behavior.</li>
+            </ul>
+          </div>
+        </details>
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="step1N">Samples per dimension (N)</label>
+            <input id="step1N" type="number" inputmode="numeric" min="2" max="65" step="1" value="33" />
+            <div class="hint">Common: 17, 33, 65. Higher = finer LUT but larger images.</div>
+          </div>
+
+          <div class="field">
+            <label for="step1M">Pixels per tile edge (M)</label>
+            <input id="step1M" type="number" inputmode="numeric" min="1" max="512" step="1" value="16" />
+            <div class="hint">Common: 8–64. Larger tiles are more robust to edge bleed but increase file size.</div>
+          </div>
+
+          <fieldset class="field fieldset">
+            <legend>Layout</legend>
+            <label class="radio">
+              <input type="radio" name="step1Layout" value="tall" checked />
+              <span>Tall (N × N² tiles)</span>
+            </label>
+            <label class="radio">
+              <input type="radio" name="step1Layout" value="wide" />
+              <span>Wide (N² × N tiles)</span>
+            </label>
+            <div class="hint">Step 3 auto-detects layout from image dimensions.</div>
+          </fieldset>
+        </div>
+
+        <div class="info-row">
+          <div class="pill" id="step1DimsPill">—</div>
+          <div class="pill" id="step1TilesPill">—</div>
+          <div class="pill warn" id="step1WarnPill" hidden>—</div>
+        </div>
+
+        <div class="preview-block">
+          <div class="preview-title">
+            <span>Rough preview (tile-level, scrollable)</span>
+            <span class="muted small">Shows N + layout only (not M)</span>
+          </div>
+          <div class="preview-scroller" aria-label="Step 1 preview scroller">
+            <canvas id="step1PreviewCanvas" width="1" height="1"></canvas>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="step1GenerateBtn" class="primary">Generate PNG</button>
+          <a id="step1DownloadLink" class="download-link" href="#" download hidden>Download pattern PNG</a>
+          <div id="step1Status" class="status" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- Step 2 -->
+      <section class="card" aria-labelledby="step2Title">
+        <div class="card-header">
+          <h2 id="step2Title">Step 2 — Apply per-pixel JavaScript filter (optional)</h2>
+          <p class="muted">
+            Loads a PNG and produces a PNG of identical dimensions by running your JS per pixel.
+            Default behavior is pass-through; only channels you modify change.
+          </p>
+        </div>
+
+        <details class="instructions">
+          <summary>Instructions & warnings</summary>
+          <div class="instructions-body">
+            <p><strong>How to use:</strong></p>
+            <ol>
+              <li>Load a PNG (typically from Step 1).</li>
+              <li>Paste or load a script into the editor.</li>
+              <li>Click <strong>Run filter</strong> to produce an output PNG.</li>
+            </ol>
+
+            <p><strong>Script contract:</strong></p>
+            <ul>
+              <li>Variables available: <code>R</code>, <code>G</code>, <code>B</code> (0–255), plus <code>X</code>, <code>Y</code>, <code>W</code>, <code>H</code>.</li>
+              <li>Pass-through by default: if you don’t assign a channel, it remains unchanged.</li>
+              <li>You may write <code>return;</code> to skip work early — it will preserve pass-through behavior.</li>
+              <li><strong>Do not</strong> declare <code>let R</code>/<code>const R</code> — assign to the existing variables instead (<code>R = ...</code>).</li>
+            </ul>
+
+            <p><strong>Safety notes:</strong></p>
+            <ul>
+              <li>Don’t paste scripts you don’t trust. Bugs or infinite loops can peg CPU.</li>
+              <li>This page blocks network requests via CSP in most hosted contexts (<code>connect-src 'none'</code>).</li>
+              <li>Very large images can take time. Use smaller N/M if needed.</li>
+            </ul>
+          </div>
+        </details>
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="step2File">Input PNG</label>
+            <input id="step2File" type="file" accept="image/png" />
+            <div class="hint" id="step2FileHint">No file loaded.</div>
+          </div>
+
+          <div class="field">
+            <label for="step2Script">Filter script</label>
+            <textarea id="step2Script" spellcheck="false" rows="10">// Example: lift shadows slightly
+if (R < 64) R += 10;
+if (G < 64) G += 10;
+if (B < 64) B += 10;
+</textarea>
+            <div class="hint">
+              Tip: Use <code>return;</code> for early exit, or touch only the channels you care about.
+            </div>
+          </div>
+
+          <div class="field row">
+            <div class="inline-actions">
+              <input id="step2LoadScript" type="file" accept=".txt,.js,text/plain" hidden />
+              <button id="step2LoadScriptBtn" class="secondary" type="button">Load script…</button>
+              <button id="step2SaveScriptBtn" class="secondary" type="button">Save script</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="subcard">
+          <h3 class="subcard-title">Filter test (single color)</h3>
+          <p class="muted small">
+            Enter RGB hex, then click <strong>Test filter</strong> to preview the effect on one pixel.
+            This does not run on every edit — only when you click.
+          </p>
+
+          <div class="test-grid">
+            <div class="field">
+              <label for="testR">R (hex)</label>
+              <input id="testR" type="text" inputmode="text" maxlength="2" value="80" />
+            </div>
+            <div class="field">
+              <label for="testG">G (hex)</label>
+              <input id="testG" type="text" inputmode="text" maxlength="2" value="80" />
+            </div>
+            <div class="field">
+              <label for="testB">B (hex)</label>
+              <input id="testB" type="text" inputmode="text" maxlength="2" value="80" />
+            </div>
+
+            <div class="swatch-block">
+              <div class="swatch-label">Input</div>
+              <div class="swatch" id="testInSwatch"></div>
+              <div class="mono small" id="testInHex">#808080</div>
+            </div>
+
+            <div class="swatch-block">
+              <div class="swatch-label">Output</div>
+              <div class="swatch" id="testOutSwatch"></div>
+              <div class="mono small" id="testOutHex">—</div>
+            </div>
+
+            <div class="field">
+              <label>&nbsp;</label>
+              <button id="testFilterBtn" class="secondary" type="button">Test filter</button>
+            </div>
+          </div>
+
+          <div id="step2TestStatus" class="status" role="status" aria-live="polite"></div>
+        </div>
+
+        <div class="actions">
+          <button id="step2RunBtn" class="primary">Run filter</button>
+          <button id="step2CancelBtn" class="secondary" type="button" disabled>Cancel</button>
+          <progress id="step2Progress" value="0" max="1" class="progress" hidden></progress>
+          <span id="step2ProgressLabel" class="mono small muted"></span>
+
+          <a id="step2DownloadLink" class="download-link" href="#" download hidden>Download filtered PNG</a>
+          <div id="step2Status" class="status" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- Step 3 -->
+      <section class="card" aria-labelledby="step3Title">
+        <div class="card-header">
+          <h2 id="step3Title">Step 3 — Generate 3D LUT (.cube) from a processed image</h2>
+          <p class="muted">
+            Loads a processed tile image (from Step 1 or Step 2, optionally edited externally),
+            auto-detects N/M/layout from dimensions, samples each tile center, and outputs a standard <code>.cube</code>.
+          </p>
+        </div>
+
+        <details class="instructions" open>
+          <summary>Instructions & warnings</summary>
+          <div class="instructions-body">
+            <p><strong>How to use:</strong></p>
+            <ol>
+              <li>Load the processed PNG (must keep exact pixel dimensions and tile ordering).</li>
+              <li>Click <strong>Generate .cube</strong> and save it.</li>
+              <li>Load the LUT in Photoshop / Premiere / After Effects, etc.</li>
+            </ol>
+
+            <p><strong>Sampling method:</strong></p>
+            <ul>
+              <li>Each tile’s representative color is computed from an <strong>inset center region</strong> (reduces edge bleed).</li>
+              <li>We sample a small grid inside the inset and average it (fast and robust).</li>
+            </ul>
+
+            <p><strong>Warnings:</strong></p>
+            <ul>
+              <li><strong>No resizing/cropping/padding.</strong> If dimensions don’t match the expected structure, LUT generation will fail.</li>
+              <li><strong>Color management:</strong> profile/gamma conversions will be baked into the LUT — do it intentionally.</li>
+              <li><strong>8-bit note:</strong> browser pipelines are typically 8-bit/channel; usually fine for creative LUTs.</li>
+            </ul>
+          </div>
+        </details>
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="step3File">Processed PNG</label>
+            <input id="step3File" type="file" accept="image/png" />
+            <div class="hint" id="step3FileHint">No file loaded.</div>
+          </div>
+
+          <div class="field">
+            <label>Auto-detected geometry</label>
+            <div class="pill-row">
+              <div class="pill" id="step3DetectedN">N: —</div>
+              <div class="pill" id="step3DetectedM">M: —</div>
+              <div class="pill" id="step3DetectedLayout">Layout: —</div>
+            </div>
+            <div class="hint" id="step3DetectHint">Load a file to detect N/M/layout.</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="step3GenerateBtn" class="primary" disabled>Generate .cube</button>
+          <button id="step3CancelBtn" class="secondary" type="button" disabled>Cancel</button>
+          <progress id="step3Progress" value="0" max="1" class="progress" hidden></progress>
+          <span id="step3ProgressLabel" class="mono small muted"></span>
+
+          <a id="step3DownloadLink" class="download-link" href="#" download hidden>Download .cube LUT</a>
+          <div id="step3Status" class="status" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <div class="container muted small">
+        Tip: Start with N=33, M=16, Tall layout. Keep the PNG lossless and unchanged in dimensions throughout your workflow.
+      </div>
+    </footer>
+
+    <!-- Update this path to wherever your build outputs index.js -->
+    <script type="module" src="./dist/index.js"></script>
+  </body>
+</html>
