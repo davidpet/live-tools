@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ken Burns Helper (Premiere Pro)</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="header">
+      <h1>Ken Burns Helper — Premiere Pro (Transform effect)</h1>
+    </header>
+
+    <div class="grid">
+      <!-- Inputs -->
+      <section class="card">
+        <div class="hd">
+          <h2>Inputs</h2>
+          <button class="btn small" id="btnReset" type="button">Reset defaults</button>
+        </div>
+
+        <div class="bd">
+          <div class="form">
+            <div class="row">
+              <label>
+                Original image width (px)
+                <input id="imgW" type="number" min="1" step="1" value="1920" />
+              </label>
+              <label>
+                Original image height (px)
+                <input id="imgH" type="number" min="1" step="1" value="1080" />
+              </label>
+            </div>
+
+            <div class="row">
+              <label>
+                Sequence width (px)
+                <input id="seqW" type="number" min="1" step="1" value="1920" />
+              </label>
+              <label>
+                Sequence height (px)
+                <input id="seqH" type="number" min="1" step="1" value="1080" />
+              </label>
+            </div>
+
+            <label class="durationLabel">
+              <span class="labelTitle">Clip Duration (seconds:frames)</span>
+              <div class="durationInputs">
+                <input id="durS" class="durationBox" type="number" min="0" step="1" value="8" />
+                <span class="durationSep">:</span>
+                <input id="durF" class="durationBox" type="number" min="0" step="1" value="0" />
+              </div>
+            </label>
+
+            <div class="row3">
+              <label>
+                Frame rate (fps)
+                <input id="fps" type="number" min="1" step="1" value="30" />
+              </label>
+
+              <div class="toggle compact">
+                <input id="isText" type="checkbox" />
+                <div class="ttext">
+                  <div class="top">Text / UI / Screenshot mode</div>
+                  <div class="sub">Reduces motion + caps blur for readability.</div>
+                </div>
+              </div>
+
+              <div class="toggle compact">
+                <input id="roundUpScale" type="checkbox" />
+                <div class="ttext">
+                  <div class="top">Guarantee coverage (Scale only: round up)</div>
+                  <div class="sub">Scale outputs use ceiling rounding within Pr’s 7-char limit.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <label>
+                Pan mode
+                <select id="panMode">
+                  <option value="none">None</option>
+                  <option value="h" selected>Horizontal</option>
+                  <option value="v">Vertical</option>
+                  <option value="d">Diagonal</option>
+                </select>
+              </label>
+              <label>
+                Pan direction
+                <select id="panDir"></select>
+              </label>
+            </div>
+
+            <div class="row">
+              <label>
+                Zoom mode
+                <select id="zoomMode">
+                  <option value="none" selected>None</option>
+                  <option value="in">Push-in</option>
+                  <option value="out">Pull-out</option>
+                </select>
+              </label>
+              <div></div>
+            </div>
+
+            <div class="mini">
+              Note: all numeric outputs are formatted to fit Premiere’s typical numeric field limit
+              (<strong>7 characters</strong>, where <code>-</code> and <code>.</code> count).
+              For values &lt; 1, output omits the leading zero when possible (e.g. <code>.123456</code>).
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Outputs -->
+      <section class="card">
+        <div class="hd">
+          <h2>Outputs</h2>
+          <div class="copyRow">
+            <button class="btn small" id="btnCopyAll" type="button">Copy all styles</button>
+          </div>
+        </div>
+
+        <div class="bd">
+          <div class="infoGrid">
+            <div class="mutedLine"><span>Computed Fit scale</span><span id="outFit">—</span></div>
+            <div class="mutedLine"><span>Computed Fill scale</span><span id="outFill">—</span></div>
+            <div class="mutedLine"><span>Duration (seconds)</span><span id="outT">—</span></div>
+            <div class="mutedLine"><span>Center Position</span><span id="outCenter">—</span></div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="outputs" id="outputs"></div>
+
+          <div class="divider"></div>
+
+          <div class="note">
+            <strong>Red outline</strong> means that specific scale is &gt; 100% (beyond 1:1, i.e., upscaling).
+            In that case, shutter angle is automatically reduced to avoid overly “mushy” blur.
+          </div>
+
+          <div class="help">
+            <h3>How to use these numbers in Premiere Pro (Transform effect)</h3>
+            <ol>
+              <li>Put your photo clip in the timeline. Select it.</li>
+              <li>Apply <code>Effects → Distort → Transform</code> to the clip (or an Adjustment Layer).</li>
+              <li>In <strong>Effect Controls</strong>, keep <code>Motion</code> at defaults (recommended): <code>Scale = 100</code>, <code>Position</code> centered.</li>
+
+              <li>
+                <strong>Pan only</strong> (Pan enabled, Zoom = None):
+                <ul>
+                  <li>Set <code>Transform → Scale</code> to <code>Pan Scale (min)</code>.</li>
+                  <li>Keyframe <code>Transform → Position</code> (X &amp; Y separately): start at clip start, end at clip end.</li>
+                  <li>Optionally set <code>Transform → Shutter Angle</code> to the suggested value (or 0).</li>
+                </ul>
+              </li>
+
+              <li>
+                <strong>Zoom only</strong> (Pan = None, Zoom enabled):
+                <ul>
+                  <li>Keyframe <code>Transform → Scale</code> using Zoom Start/End.</li>
+                  <li>Leave <code>Transform → Position</code> centered unless you want static framing.</li>
+                </ul>
+              </li>
+
+              <li>
+                <strong>Pan + Zoom together</strong>:
+                <ul>
+                  <li>Keyframe <code>Transform → Position</code> using Pan Start/End X/Y.</li>
+                  <li>Keyframe <code>Transform → Scale</code> using Zoom Start/End (already includes min coverage for the pan travel).</li>
+                </ul>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast">Copied</div>
+  </div>
+
+  <script type="module" src="./dist/index.js"></script>
+</body>
+</html>
